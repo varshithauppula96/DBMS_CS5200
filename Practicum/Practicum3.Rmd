@@ -1,0 +1,160 @@
+---
+title: "Practicum 3"
+author: "Varshitha Uppula"
+output: html_notebook
+
+---
+
+<br>
+<br>
+
+```{r include = FALSE}
+install.packages("stringr")
+install.packages("stringi")
+install.packages("XML")
+install.packages("methods")
+
+```
+
+
+
+```{r warning = FALSE, Comment = TRUE}
+# Load required packages
+library("stringr")
+library("stringi")
+library("XML")
+library("methods")
+library("sqldf")
+library("RColorBrewer")
+```
+
+
+## 1. Inspect the Plant Catalog XML 
+
+The plant catalog has elements : COMMON which is the common name of a plant, BOTANICAL which is the scientific name of a plant, zone, LIGHT which is the amount of light like sunny, shade in which they grow, PRICE of the plant and AVAILABILITY. 
+There are 36 instances of the plants.
+
+```{r warning = FALSE}
+xparse <- xmlParse("plants.xml")
+xparse
+```
+
+
+## 2.Load the Plant Catalog XML directly into a dataframe using xmlToDataFrame.
+
+```{r}
+xmldata <- xmlToDataFrame("plants.xml")
+print(xmldata)
+```
+
+## 3.Create a new column retail that is a numeric column and has the data from the price column; note that the price column is text and contains a leading '$' and needs to be parsed properly.
+```{r}
+prc<-str_sub(xmldata$PRICE,2)
+print(prc)
+xmldata$RETAIL <- as.numeric(prc)
+print(xmldata)
+```
+
+## 4.Remove the original price column (the one that is text) from the dataframe.
+```{r Warning = FALSE, MESSAGE =FALSE}
+xmldata$PRICE <- NULL
+xmldata
+```
+
+## 5.Update all prices: increase them by 4.25%.
+```{r}
+ prc<- xmldata$RETAIL
+prc <- prc+(prc * 0.0425)
+xmldata$RETAIL <- prc
+print(xmldata)
+```
+
+## 6.Create a histogram of the number of plants by price. 
+
+```{r}
+price<- xmldata$RETAIL
+darkcol <- brewer.pal(9, "RdPu")
+hist(price,main="Histogram for Price",
+     xlab="Price",
+     ylab="Number of plants",
+     xlim=c(1,12),
+     col= darkcol,
+     labels = TRUE)
+```
+
+## 7.Using sqldf create a SQL query that finds the common names of all plants that cost less than $8 and grow in Sunny light.
+
+```{r}
+query1<- sqldf("select COMMON from xmldata where Retail<8 AND LIGHT = 'Sunny'")
+print(query1)
+```
+## 8.Using either sqldf or dataframe functions, how many plants grow in full shade?
+```{r}
+query2<- sqldf("select count(*) from xmldata where LIGHT = 'Shade'")
+print(query2)
+```
+## 9.Write the dataframe to a new table in a new SQLite database using the dbWriteTable function.
+```{r}
+con <- dbConnect(SQLite(),dbname="prac3.db")
+dbWriteTable(con,overwrite =TRUE, "plants", xmldata)
+dbReadTable(con, "plants")
+dbDisconnect(con)
+```
+# In SQLite:
+
+## 1.Inspect the database created in (9) above. Is the table there? What is its name? Are the columns correct?
+
+TABLE plants is created in the database prac3, all the columns given in the XML are present as shown in the below figures. On inspection of the table, we can see that the data types of columns COMMON,BOTANICAL,ZONE,LIGHT,AVAILABILTY is TEXT and for RETAIL it is REAL. 
+
+![Fig : Database prac3 created](sqlite.png)
+
+<br>
+
+![Fig : Table created in sqlite](sqldb.png)
+
+<br>
+
+![Fig : Data Types of the columns in table plants](datatype.png)
+
+<br>
+
+## 2.Write a SQL UPDATE statement that decreases all prices by 0.75%.
+UPDATE plants SET RETAIL = RETAIL -( RETAIL * 0.0075);
+![](update.png)
+
+
+# In R Studio
+
+## 1.Connect to the SQLite database from above
+```{r}
+con <- dbConnect(SQLite(),dbname="prac3.db")
+dbReadTable(con, "plants")
+```
+
+## 2.Build and execute a SQL query that finds the number of plants by light.
+```{r}
+dbGetQuery(con, "SELECT count(*), LIGHT FROM plants GROUP BY LIGHT")
+dbDisconnect(con)
+```
+
+# In R Studio
+
+## 1.Parse the Plant Catalog XML and write an XPath query that finds all plants that grow in full shade or in full sun.
+```{r}
+doc<- xmlParse("plants.xml")
+xpathquery<- xpathSApply(doc,"/CATALOG/PLANT[LIGHT='Sun'or LIGHT ='Shade']")
+xpathquery
+   
+```
+## 2.Put the result from the previous XPath query into a dataframe and then calculate the 10% trimmed mean of the prices.
+
+```{r}
+df<-xmlToDataFrame(xpathquery)
+df
+```
+
+```{r}
+
+mean(as.numeric(substring(df$PRICE,2)), trim=0.1)
+```
+
